@@ -8,7 +8,11 @@ set(SYSTEMC_INC_DIR ${SYSTEMC_HOME}/include)
 # set(SYSTEMC_LIB_DIR ${SYSTEMC_HOME}/lib/libsystemc.so)
 find_package(SystemCLanguage REQUIRED PATHS ${SYSTEMC_HOME})
 
-set(INC)
+set(INC
+        common/
+        device/
+        controller/
+)
 
 set(SRC
         main.cpp
