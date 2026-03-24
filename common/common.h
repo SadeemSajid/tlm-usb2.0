@@ -1,0 +1,13 @@
+#ifndef COMMON_H
+#define COMMON_H
+
+enum device_state {
+	USB_ATTACHED,
+	USB_POWERED,
+	USB_DEFAULT,
+	USB_ADDRESS,
+	USB_CONFIGURED,
+	USB_SUSPENDED
+};
+
+#endif // COMMON_H
