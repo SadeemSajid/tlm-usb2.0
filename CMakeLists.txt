@@ -16,6 +16,11 @@ set(INC
 
 set(SRC
         main.cpp
+
+        # USB Device
+        device/device.cpp
+
+        # USB Controller
 )
 
 add_executable(usb ${SRC})

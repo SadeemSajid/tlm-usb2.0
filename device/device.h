@@ -116,6 +116,17 @@ class USB_Device : public sc_core::sc_module
 
 	/* Device USB state */
 	enum device_state state;
+	enum transmission_state tr_state;
+
+	/* Misc */
+	uint8_t addr;
+	bool data_toggle;
+
+	/* Transaction Ordering */
+	uint8_t *data_stage_ptr; // Points to the descriptor being sent
+	uint32_t data_stage_len; // Remaining bytes to send
+	uint8_t next_address;	 // Pending address from SET_ADDRESS
+	pid_token last_token;
 
       public:
 	/* TLM Sockets */
@@ -130,8 +141,8 @@ class USB_Device : public sc_core::sc_module
 		dev_desc.bDeviceSubClass = B_DEVICE_SUB_CLASS;
 		dev_desc.bDeviceProtocol = B_DEVICE_PROTOCOL;
 		dev_desc.bMaxPacketSize0 = B_MAX_PACKET_SIZE_0;
-		dev_desc.idVendor = 0;
-		dev_desc.idProduct = 0;
+		dev_desc.idVendor = 0x1234;
+		dev_desc.idProduct = 0x5678;
 		dev_desc.bcdDevice = 0;
 		dev_desc.iManufacturer = I_MANAFACTURER;
 		dev_desc.iProduct = I_PRODUCT;
@@ -177,6 +188,10 @@ class USB_Device : public sc_core::sc_module
 
 		/* We will assume device is reset */
 		state = USB_DEFAULT;
+		tr_state = USB_TOKEN;
+		addr = 0;
+		data_toggle = 0;
+		last_token = PID_TOKEN_INIT;
 
 		/* Thread Registration */
 		target.register_b_transport(this, &USB_Device::b_transport);

@@ -1,6 +1,10 @@
 #include "common.h"
 #include <systemc>
 
+#define DEVICE_ADDRESS                                                         \
+	0x1 // The default address to assign to the USB device connected to this
+	    // host controller
+
 class Controller : public sc_core::sc_module
 {
 	bool data_toggle;
