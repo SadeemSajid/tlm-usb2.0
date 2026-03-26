@@ -10,6 +10,13 @@ class Controller : public sc_core::sc_module
 	bool data_toggle;
 	enum device_state dev_state;
 
+	/* Buffer (Read/Write) */
+	uint8_t *buffer;
+
+	// TODO: HUB IN endpoint for reporting device attachment events to the
+	// HOST
+	// TODO: HOST periodic polling to learn new or removed devices
+
       public:
 	SC_CTOR(Controller)
 	{

@@ -19,6 +19,7 @@ set(SRC
 
         # USB Device
         device/device.cpp
+        device/device_tb.cpp
 
         # USB Controller
 )

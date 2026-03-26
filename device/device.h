@@ -2,6 +2,7 @@
 #define DEVICE_H
 
 #include <cstdint>
+#include <cstring>
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
@@ -117,13 +118,14 @@ class USB_Device : public sc_core::sc_module
 	/* Device USB state */
 	enum device_state state;
 	enum transmission_state tr_state;
+	enum control_state ctrl_state;
 
 	/* Misc */
-	uint8_t addr;
-	bool data_toggle;
+	uint8_t addr;			 // device address set by host
+	bool data_toggle;		 // DATA0 & DATA1 toggle
+	uint8_t buffer[MAX_PACKET_SIZE]; // Holds transfer data
 
 	/* Transaction Ordering */
-	uint8_t *data_stage_ptr; // Points to the descriptor being sent
 	uint32_t data_stage_len; // Remaining bytes to send
 	uint8_t next_address;	 // Pending address from SET_ADDRESS
 	pid_token last_token;
@@ -132,7 +134,7 @@ class USB_Device : public sc_core::sc_module
 	/* TLM Sockets */
 	tlm_utils::simple_target_socket<USB_Device> target;
 
-	SC_CTOR(USB_Device)
+	SC_CTOR(USB_Device) : target("target")
 	{
 		dev_desc.bLength = B_LENGTH;
 		dev_desc.bDescriptorType = B_DESCRIPTOR_TYPE;
@@ -193,12 +195,18 @@ class USB_Device : public sc_core::sc_module
 		data_toggle = 0;
 		last_token = PID_TOKEN_INIT;
 
+		/* Prepare buffer */
+		memset(buffer, 0, MAX_PACKET_SIZE);
+
 		/* Thread Registration */
 		target.register_b_transport(this, &USB_Device::b_transport);
 	}
 
 	void b_transport(tlm::tlm_generic_payload &trans,
 			 sc_core::sc_time &delay);
+
+	bool process_token(token_t *token, tlm::tlm_generic_payload &trans);
+	bool process_data(data_t *data, tlm::tlm_generic_payload &trans);
 };
 
 #endif // DEVICE_H

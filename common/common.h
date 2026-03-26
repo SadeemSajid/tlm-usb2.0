@@ -10,6 +10,13 @@ enum device_state {
 	USB_SUSPENDED
 };
 
-enum transmission_state { USB_TOKEN, USB_DATA };
+enum transmission_state { USB_TOKEN, USB_DATA, USB_NO_DATA };
+
+enum control_state {
+	USB_CTRL_NONE,
+	USB_CTRL_SETUP,
+	USB_CTRL_DATA,
+	USB_CTRL_STATUS
+};
 
 #endif // COMMON_H
