@@ -182,24 +182,63 @@ bool USB_Device::process_data(data_t *data, tlm::tlm_generic_payload &trans)
 				// copyin in DATA phase
 				memcpy(buffer, &dev_desc, sizeof(dev_desc));
 				data_stage_len = sizeof(dev_desc);
-
-				// TODO: Replace this with an explicit ACK
-				trans.set_response_status(tlm::TLM_OK_RESPONSE);
 			}
 
 			// CONFIGURATION
+			else if (desc_type == CONFIGURATION) {
+				// Return Config + Interface + all
+				// Endpoints in one go. Copy Config Descriptor
+				memcpy(buffer, &conf_desc, sizeof(conf_desc));
+				data_stage_len = sizeof(conf_desc);
 
+				// Copy Interface Descriptor immediately after
+				memcpy(buffer + data_stage_len, &int_desc,
+				       sizeof(int_desc));
+				data_stage_len += sizeof(int_desc);
+
+				// TODO: End-point descriptors
+			}
 			// INTERFACE
+			else if (desc_type == INTERFACE) {
+				memcpy(buffer, &int_desc, sizeof(int_desc));
+				data_stage_len = sizeof(int_desc);
+			}
+
+			// STRING
+			else if (desc_type == STRING) {
+				if (desc_index == 0) {
+					memcpy(buffer, &lang_desc,
+					       sizeof(lang_desc));
+					data_stage_len = sizeof(lang_desc);
+				} else if (desc_index == 1) { // iManufacturer
+					memcpy(buffer, &vendor_desc,
+					       vendor_desc.bLength);
+					data_stage_len = vendor_desc.bLength;
+				} else if (desc_index == 2) { // iProduct
+					memcpy(buffer, &product_desc,
+					       product_desc.bLength);
+					data_stage_len = product_desc.bLength;
+				}
+			}
 
 			// Make sure we do not send more than request
 			// Some hosts usually get first 8 bytes only
-			if (data_stage_len > request->wLength) {
-				data_stage_len = request->wLength;
+			if (data_stage_len > 0) {
+				// Clamp to host's requested length
+				if (data_stage_len > request->wLength) {
+					data_stage_len = request->wLength;
+				}
+
+				// TODO: Replace this with an explicit ACK
+				trans.set_response_status(tlm::TLM_OK_RESPONSE);
+			} else {
+				// Stall if descriptor type isn't supported
+				trans.set_response_status(
+				    tlm::TLM_GENERIC_ERROR_RESPONSE);
 			}
 		}
-
 		// SET ADDRESS
-		if (request->bRequest == REQ_SET_ADDRESS) {
+		else if (request->bRequest == REQ_SET_ADDRESS) {
 
 			pending_addr = (uint8_t)request->wValue;
 
