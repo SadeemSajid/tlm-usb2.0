@@ -26,6 +26,12 @@ This USB device implements a subset of the USB 2.0 specification, focused on dev
                          │ TLM Initiator Socket
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
+│                     Host Controller                         │
+│                                                         │
+└────────────────────────┬────────────────────────────────────┘
+                         │ TLM Initiator Socket
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
 │                    USB Device Module                        │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ Descriptors │  │ State       │  │ Transmission        │  │
@@ -36,8 +42,6 @@ This USB device implements a subset of the USB 2.0 specification, focused on dev
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 └────────────────────────┬────────────────────────────────────┘
                          │ TLM Target Socket
-                         ▼
-                  (Host Controller - TODO)
 ```
 
 ### Module Hierarchy
@@ -45,8 +49,9 @@ This USB device implements a subset of the USB 2.0 specification, focused on dev
 | Module | File | Purpose |
 |--------|------|---------|
 | `USB_Device` | `device/device.cpp`, `device.h` | Main USB device implementation |
+| `USB_Device_TB` | `device/device_tb.cpp`, `device_tb.h` | Device testbench |
 | `Controller` | `controller/controller.h` | Host controller (placeholder) |
-| `CPU` | `cpu/cpu.h` | CPU/testbench module (placeholder) |
+| `CPU` | `cpu/cpu.h` | CPU module (placeholder) |
 
 ---
 
@@ -120,6 +125,46 @@ Controls the ordering of USB transactions within a control transfer.
 |-------|-------------|
 | `USB_TOKEN` | Waiting for token packet (SETUP/IN/OUT/SOF) |
 | `USB_DATA` | Waiting for data or status stage packet |
+| `USB_NO_DATA` | No data stage (control transfers with no data phase) |
+
+---
+
+## Control State Machine
+
+Manages the stages of a USB control transfer.
+
+```
+┌──────────────┐    SETUP received    ┌───────────────┐
+│ USB_CTRL_NONE │────────────────────►│ USB_CTRL_SETUP │
+└──────────────┘                      └───────┬───────┘
+       ▲                                      │
+       │         SETUP received               │ Data transfer
+       │                                      ▼
+       │                               ┌───────────────┐
+       └──────────────────────────────│  USB_CTRL_DATA │
+                                      └───────┬───────┘
+                                              │
+                                              │ Status transfer
+                                              ▼
+                                      ┌───────────────┐
+                                      │ USB_CTRL_STATUS│
+                                      └───────┬───────┘
+                                              │
+                                              │ Complete
+                                              ▼
+                                       ┌──────────────┐
+                                       │ USB_CTRL_NONE│
+                                       └──────────────┘
+```
+
+### Control States
+
+| State | Description |
+|-------|-------------|
+| `USB_CTRL_NONE` | Idle, no active control transfer |
+| `USB_CTRL_SETUP` | SETUP packet received, processing request |
+| `USB_CTRL_DATA` | DATA stage in progress |
+| `USB_CTRL_STATUS` | STATUS stage in progress |
 
 ---
 
@@ -368,15 +413,15 @@ Edit the string descriptor macros in `device/device.h`:
 ## Future Work
 
 ### High Priority
-- [ ] Implement `SET_ADDRESS` request handler
+- [x] Implement `SET_ADDRESS` request handler
 - [ ] Implement `SET_CONFIGURATION` request handler
 - [ ] Add `GET_DESCRIPTOR` for STRING type
 - [ ] Add `GET_DESCRIPTOR` for CONFIGURATION type
-- [ ] Implement state transitions
+- [x] Implement state transitions
 
 ### Medium Priority
 - [ ] Add NAK/STALL responses
-- [ ] Implement data toggle synchronization
+- [ ] Implement data toggle synchronization with controller
 - [ ] Add CRC validation
 - [ ] Implement address filtering
 - [ ] Complete host controller module
@@ -404,10 +449,12 @@ usb2.0/
 ├── controller/
 │   └── controller.h         # Host controller (placeholder)
 ├── cpu/
-│   └── cpu.h                # CPU/testbench (placeholder)
+│   └── cpu.h                # CPU module (placeholder)
 └── device/
     ├── device.h             # Device class, descriptors
-    └── device.cpp           # Device implementation
+    ├── device.cpp           # Device implementation
+    ├── device_tb.h          # Device testbench header
+    └── device_tb.cpp        # Device testbench implementation
 ```
 
 ---

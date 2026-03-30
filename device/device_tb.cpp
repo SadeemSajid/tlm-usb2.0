@@ -8,19 +8,31 @@ void USB_Device_TB::run_test()
 {
 	sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
 
-	std::cout << "\n--- Starting USB GET_DESCRIPTOR Test ---\n"
+	// --- STEP 1: Initial GET_DESCRIPTOR (Address 0) ---
+	std::cout << "\n--- Part 1: GET_DESCRIPTOR on Address 0 ---"
 		  << std::endl;
-
-	// 1. SETUP STAGE
 	send_setup_stage(0, 0, REQ_GET_DESCRIPTOR, (DEVICE << 8), 18);
-
-	// 2. DATA STAGE (Device sends data to USB_Device_TB)
 	send_data_stage_in(0, 0, 18);
-
-	// 3. STATUS STAGE (USB_Device_TB sends ZLP to Device)
 	send_status_stage_out(0, 0);
 
-	std::cout << "\n--- Test Complete ---" << std::endl;
+	// --- STEP 2: SET_ADDRESS to 2 (Address 0) ---
+	// Note: The device still responds to Address 0 during this entire
+	// transfer.
+	std::cout << "\n--- Part 2: SET_ADDRESS to 2 ---" << std::endl;
+	send_setup_stage(0, 0, REQ_SET_ADDRESS, 2, 0);
+
+	// Status Stage for SET_ADDRESS is an IN transaction (Device says "ACK")
+	send_status_stage_in(0, 0);
+
+	// --- STEP 3: GET_DESCRIPTOR (Address 2) ---
+	// Now we test if the device actually migrated its address.
+	std::cout << "\n--- Part 3: GET_DESCRIPTOR on New Address 2 ---"
+		  << std::endl;
+	send_setup_stage(2, 0, REQ_GET_DESCRIPTOR, (DEVICE << 8), 18);
+	send_data_stage_in(2, 0, 18);
+	send_status_stage_out(2, 0);
+
+	std::cout << "\n--- All Tests Complete ---" << std::endl;
 }
 
 // Helper to send a raw TLM transaction
@@ -37,7 +49,8 @@ void USB_Device_TB::transport_packet(uint8_t *buf, size_t len)
 	socket->b_transport(trans, delay);
 
 	if (trans.is_response_error()) {
-		std::cerr << "TLM Transaction Error!" << std::endl;
+		std::cerr << "[USB_Device_TB] TLM Transaction Error!"
+			  << std::endl;
 	}
 }
 
@@ -118,4 +131,31 @@ void USB_Device_TB::send_status_stage_out(uint8_t addr, uint8_t ep)
 	pid->check = (uint8_t)(~PID_DATA_DATA1 & 0x0F);
 
 	transport_packet(zlp, sizeof(zlp));
+}
+
+void USB_Device_TB::send_status_stage_in(uint8_t addr, uint8_t ep)
+{
+	std::cout << "[USB_Device_TB] Initiating STATUS Stage (IN)..."
+		  << std::endl;
+
+	// A. Token Packet (Host asks Device for Status)
+	token_t token_pkt;
+	token_pkt.pid.type = PID_TOKEN_IN;
+	token_pkt.pid.check = (uint8_t)(~PID_TOKEN_IN & 0x0F);
+	token_pkt.address = addr;
+	token_pkt.endp = ep;
+	transport_packet((uint8_t *)&token_pkt, sizeof(token_t));
+
+	// B. Data Packet (Host provides a buffer, Device should fill with ZLP
+	// DATA1)
+	uint8_t rx_buf[MAX_PACKET_SIZE];
+	transport_packet(rx_buf, MAX_PACKET_SIZE);
+
+	// Sanity check: Ensure the Device sent a DATA1 PID
+	packet_pid_t *pid = (packet_pid_t *)rx_buf;
+	if (pid->type == PID_DATA_DATA1) {
+		std::cout
+		    << "[USB_Device_TB] Status Stage Received: DATA1 (ACK)"
+		    << std::endl;
+	}
 }

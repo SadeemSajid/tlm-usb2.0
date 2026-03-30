@@ -27,7 +27,7 @@ enum pid_handshake {
 	PID_HANDSHAKE_NYET = 0x6
 };
 
-enum request { REQ_GET_DESCRIPTOR = 0x06 };
+enum request { REQ_SET_ADDRESS = 0x05, REQ_GET_DESCRIPTOR = 0x06 };
 
 enum descriptor_type { DEVICE = 0x1, CONFIGURATION, STRING, INTERFACE };
 
@@ -47,7 +47,6 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
 	packet_pid_t pid;
 	uint8_t *data;
-	uint32_t length; // deviation from the spec for simplicity
 	uint16_t crc : 16;
 } data_t;
 

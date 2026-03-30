@@ -21,4 +21,6 @@ class USB_Device_TB : public sc_core::sc_module
 	void send_data_stage_in(uint8_t addr, uint8_t ep,
 				uint16_t expected_len);
 	void send_status_stage_out(uint8_t addr, uint8_t ep);
+
+	void send_status_stage_in(uint8_t addr, uint8_t ep);
 };

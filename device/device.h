@@ -121,7 +121,9 @@ class USB_Device : public sc_core::sc_module
 	enum control_state ctrl_state;
 
 	/* Misc */
-	uint8_t addr;			 // device address set by host
+	uint8_t addr;	      // device address set by host
+	uint8_t pending_addr; // New address before STATUS stage
+
 	bool data_toggle;		 // DATA0 & DATA1 toggle
 	uint8_t buffer[MAX_PACKET_SIZE]; // Holds transfer data
 
@@ -129,6 +131,7 @@ class USB_Device : public sc_core::sc_module
 	uint32_t data_stage_len; // Remaining bytes to send
 	uint8_t next_address;	 // Pending address from SET_ADDRESS
 	pid_token last_token;
+	bool ctrl_data_skip;
 
       public:
 	/* TLM Sockets */
@@ -191,8 +194,9 @@ class USB_Device : public sc_core::sc_module
 		/* We will assume device is reset */
 		state = USB_DEFAULT;
 		tr_state = USB_TOKEN;
-		addr = 0;
+		addr = pending_addr = 0;
 		data_toggle = 0;
+		ctrl_data_skip = false;
 		last_token = PID_TOKEN_INIT;
 
 		/* Prepare buffer */
