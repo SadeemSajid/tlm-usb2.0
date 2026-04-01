@@ -13,45 +13,69 @@ This USB device implements a subset of the USB 2.0 specification, focused on dev
 - TLM 2.0 generic payload interface
 - Configurable vendor/product strings
 - Standard USB descriptor hierarchy
+- DMA-capable host controller
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         CPU Module                          │
-│                   (Baremetal Firmware)                      │
-└────────────────────────┬────────────────────────────────────┘
-                         │ TLM Initiator Socket
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     Host Controller                         │
-│                                                         │
-└────────────────────────┬────────────────────────────────────┘
-                         │ TLM Initiator Socket
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    USB Device Module                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Descriptors │  │ State       │  │ Transmission        │  │
-│  │ - Device    │  │ Machine     │  │ State Machine       │  │
-│  │ - Config    │  │             │  │                     │  │
-│  │ - Interface │  │             │  │                     │  │
-│  │ - Strings   │  │             │  │                     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└────────────────────────┬────────────────────────────────────┘
-                         │ TLM Target Socket
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CPU Module                                      │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                          Internal RAM (64 bytes)                      │  │
+│  │   - Stores setup request data                                         │  │
+│  │   - Receives descriptor data from device via DMA                      │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  socket (initiator)                    dma (target)                          │
+│       │                                     ▲                                │
+└───────┼─────────────────────────────────────┼────────────────────────────────┘
+        │                                     │
+        │ TLM Write/Read                      │ TLM Write (DMA)
+        ▼                                     │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Host Controller                                     │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  Registers:                                                           │  │
+│  │  - REG_USB_CMD (0x00): Run/Stop, Reset                               │  │
+│  │  - REG_USB_STS (0x04): Idle, Error, Transaction Complete, Busy        │  │
+│  │  - REG_PORT_SC (0x08): Connect, Port Reset                            │  │
+│  │  - REG_ADDR_ENDP (0x0C): Address + Endpoint                           │  │
+│  │  - REG_DATA_PTR (0x10): DMA pointer to System RAM                    │  │
+│  │  - REG_TOKEN (0x14): Write to trigger transaction                     │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  cpu_in_sock (target)      dev_out_sock (initiator)      dma_sock (initiator)│
+│       ▲                           │                              │           │
+└───────┼───────────────────────────┼──────────────────────────────┼───────────┘
+        │                           │                              │
+        │                           │ TLM Write                    │ TLM Read/Write
+        │                           ▼                              ▼
+        │              ┌───────────────────────────────────────────────────────┐
+        │              │                    USB Device                         │
+        │              │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐ │
+        │              │  │ Descriptors │  │ Device      │  │ Transmission    │ │
+        │              │  │ - Device    │  │ State       │  │ State Machine   │ │
+        │              │  │ - Config    │  │ Machine     │  │                 │ │
+        │              │  │ - Interface │  │             │  │                 │ │
+        │              │  │ - Strings   │  │             │  │                 │ │
+        │              │  └─────────────┘  └─────────────┘  └─────────────────┘ │
+        │              │                                                       │
+        │              │  target (target socket)                               │
+        │              └───────────────────────────────────────────────────────┘
+        │                                                                      ▲
+        └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Module Hierarchy
 
 | Module | File | Purpose |
 |--------|------|---------|
-| `USB_Device` | `device/device.cpp`, `device.h` | Main USB device implementation |
-| `USB_Device_TB` | `device/device_tb.cpp`, `device_tb.h` | Device testbench |
-| `Controller` | `controller/controller.h` | Host controller (placeholder) |
-| `CPU` | `cpu/cpu.h` | CPU module (placeholder) |
+| `USB_Device` | `device/device.h`, `device/device.cpp` | Main USB device implementation with descriptors and state machines |
+| `Controller` | `controller/controller.h`, `controller/controller.cpp` | Host controller with register interface and DMA capability |
+| `CPU` | `cpu/cpu.h`, `cpu/cpu.cpp` | CPU module with internal RAM and firmware |
+| `USB_Device_TB` | `device/device_tb.h`, `device/device_tb.cpp` | Device testbench for standalone testing |
 
 ---
 
@@ -81,7 +105,7 @@ This USB device implements a subset of the USB 2.0 specification, focused on dev
                                      │ SET_CONFIGURATION
                                      ▼
                               ┌──────────────┐
-                              │ USB_CONFIGURED│
+                              │USB_CONFIGURED│
                               └──────┬───────┘
                                      │
                                      │ Suspend
@@ -104,7 +128,57 @@ This USB device implements a subset of the USB 2.0 specification, focused on dev
 
 ---
 
-## Transmission State Machine
+## Controller State Machine
+
+```
+                    ┌───────────────┐
+                    │  HC_STOPPED   │
+                    └───────┬───────┘
+                            │ HC_CMD_RUN
+                            ▼
+                    ┌───────────────┐
+                    │  HC_RUNNING   │
+                    └───────┬───────┘
+                            │ Token written to REG_TOKEN
+                            ▼
+                    ┌───────────────┐
+                    │ HC_OPERATION  │◄──────────────┐
+                    └───────┬───────┘               │
+                            │ Transaction Complete   │
+                            ▼                       │
+                    ┌───────────────┐               │
+                    │  HC_RUNNING   │───────────────┘
+                    └───────┬───────┘
+                            │ HC_CMD_RESET
+                            ▼
+                    ┌───────────────┐
+                    │   HC_RESET    │
+                    └───────┬───────┘
+                            │ Reset Complete
+                            ▼
+                    ┌───────────────┐
+                    │  HC_STOPPED   │
+                    └───────────────┘
+
+                    On Error:
+                    ┌───────────────┐
+                    │   HC_ERROR    │
+                    └───────────────┘
+```
+
+### Controller States
+
+| State | Description |
+|-------|-------------|
+| `HC_STOPPED` | Controller idle, not processing transactions |
+| `HC_RUNNING` | Controller enabled, waiting for token |
+| `HC_OPERATION` | Controller executing USB transaction |
+| `HC_RESET` | Controller resetting internal state |
+| `HC_ERROR` | Error occurred during transaction |
+
+---
+
+## Transmission State Machine (Device)
 
 Controls the ordering of USB transactions within a control transfer.
 
@@ -129,7 +203,7 @@ Controls the ordering of USB transactions within a control transfer.
 
 ---
 
-## Control State Machine
+## Control State Machine (Device)
 
 Manages the stages of a USB control transfer.
 
@@ -138,23 +212,22 @@ Manages the stages of a USB control transfer.
 │ USB_CTRL_NONE │────────────────────►│ USB_CTRL_SETUP │
 └──────────────┘                      └───────┬───────┘
        ▲                                      │
-       │         SETUP received               │ Data transfer
+       │         SETUP received               │ Data transfer (optional)
        │                                      ▼
        │                               ┌───────────────┐
-       └──────────────────────────────│  USB_CTRL_DATA │
-                                      └───────┬───────┘
-                                              │
-                                              │ Status transfer
-                                              ▼
-                                      ┌───────────────┐
-                                      │ USB_CTRL_STATUS│
-                                      └───────┬───────┘
-                                              │
-                                              │ Complete
-                                              ▼
-                                       ┌──────────────┐
-                                       │ USB_CTRL_NONE│
-                                       └──────────────┘
+       │                               │  USB_CTRL_DATA │
+       │                               └───────┬───────┘
+       │                                       │
+       │         No DATA stage (SET_ADDRESS)   │ Status transfer
+       │         (ctrl_data_skip = true)       ▼
+       │                               ┌───────────────┐
+       └───────────────────────────────│ USB_CTRL_STATUS│
+                                       └───────┬───────┘
+                                               │ Complete
+                                               ▼
+                                        ┌──────────────┐
+                                        │ USB_CTRL_NONE │
+                                        └──────────────┘
 ```
 
 ### Control States
@@ -179,6 +252,10 @@ The device supports standard control transfers via Endpoint 0.
 │ SETUP   │────►│  DATA   │────►│ STATUS  │────►│  IDLE   │
 │  Stage  │     │  Stage  │     │  Stage  │     │         │
 └─────────┘     └─────────┘     └─────────┘     └─────────┘
+     │                               ▲
+     │   (No DATA stage)             │
+     │   e.g., SET_ADDRESS           │
+     └───────────────────────────────┘
 ```
 
 #### SETUP Stage
@@ -191,11 +268,16 @@ The device supports standard control transfers via Endpoint 0.
   - `0`: Host-to-Device (OUT)
   - `1`: Device-to-Host (IN)
 - Uses `DATA0`/`DATA1` toggle for synchronization
+- **Can be skipped** for requests like `SET_ADDRESS` that have no data phase
 
 #### STATUS Stage
 - Opposite direction of DATA stage
-- Host sends `IN` (for OUT transfers) or `OUT`/`SETUP` (for IN transfers)
-- Device responds with `ACK` or status data
+- For transfers with DATA stage:
+  - Host sends `IN` (for OUT transfers) or `OUT` (for IN transfers)
+  - Device responds with `ACK` or status data
+- For transfers without DATA stage (e.g., `SET_ADDRESS`):
+  - Host sends `IN` token
+  - Device responds with `DATA1` ZLP (Zero Length Packet)
 
 ### Supported Standard Requests
 
@@ -278,14 +360,14 @@ Returns device identification and device-level information.
 #### Manufacturer String (Index 1)
 | Offset | Field | Size | Value | Description |
 |--------|-------|------|-------|-------------|
-| 0 | `bLength` | 2+2n | 22 | Descriptor length |
+| 0 | `bLength` | 2+2n | 10 | Descriptor length |
 | 1 | `bDescriptorType` | 1 | 0x03 | STRING descriptor |
 | 2+ | `bString` | 2n | UTF-16LE | String data |
 
 #### Product String (Index 2)
 | Offset | Field | Size | Value | Description |
 |--------|-------|------|-------|-------------|
-| 0 | `bLength` | 2+2n | 24 | Descriptor length |
+| 0 | `bLength` | 2+2n | 10 | Descriptor length |
 | 1 | `bDescriptorType` | 1 | 0x03 | STRING descriptor |
 | 2+ | `bString` | 2n | UTF-16LE | String data |
 
@@ -347,13 +429,26 @@ Returns device identification and device-level information.
 
 ## TLM Interface
 
-### Target Socket
+### CPU Module
 
-The device exposes a `tlm_utils::simple_target_socket` for receiving transactions from the host controller.
+| Socket | Type | Direction | Purpose |
+|--------|------|-----------|---------|
+| `socket` | `simple_initiator_socket` | Outbound | Write to Controller registers, poll status |
+| `dma` | `simple_target_socket` | Inbound | DMA writes from Controller (descriptor data) |
 
-```cpp
-tlm_utils::simple_target_socket<USB_Device> target;
-```
+### Controller Module
+
+| Socket | Type | Direction | Purpose |
+|--------|------|-----------|---------|
+| `cpu_in_sock` | `simple_target_socket` | Inbound | Receive register writes/reads from CPU |
+| `dev_out_sock` | `simple_initiator_socket` | Outbound | Send USB packets to Device |
+| `dma_sock` | `simple_initiator_socket` | Outbound | DMA read/write to CPU RAM |
+
+### Device Module
+
+| Socket | Type | Direction | Purpose |
+|--------|------|-----------|---------|
+| `target` | `simple_target_socket` | Inbound | Receive USB packets from Controller |
 
 ### Transaction Format
 
@@ -365,12 +460,24 @@ Transactions use `tlm::tlm_generic_payload` with the following data pointer type
 | Data | `data_t*` | PID + Data pointer + Length + CRC |
 | Handshake | `handshake_t*` | PID only |
 
+### Controller Register Map
+
+| Offset | Register | Access | Description |
+|--------|----------|--------|-------------|
+| 0x00 | `REG_USB_CMD` | R/W | Bit 0: Run/Stop, Bit 1: Reset |
+| 0x04 | `REG_USB_STS` | R | Bit 0: Idle, Bit 1: Error, Bit 2: Transaction Complete, Bit 3: Busy, Bit 4: Stopped |
+| 0x08 | `REG_PORT_SC` | R/W | Bit 0: Connect, Bit 1: Port Reset |
+| 0x0C | `REG_ADDR_ENDP` | R/W | [6:0] Address, [10:7] Endpoint |
+| 0x10 | `REG_DATA_PTR` | R/W | Pointer to System RAM (DMA Address) |
+| 0x14 | `REG_TOKEN` | W | Write to trigger: 0=SETUP, 1=IN, 2=OUT |
+
 ### Response Status
 
 | Status | Meaning |
 |--------|---------|
 | `TLM_OK_RESPONSE` | Transaction successful |
 | `TLM_GENERIC_ERROR_RESPONSE` | Error occurred |
+| `TLM_ADDRESS_ERROR_RESPONSE` | DMA address out of bounds |
 
 ---
 
@@ -381,20 +488,21 @@ Transactions use `tlm::tlm_generic_payload` with the following data pointer type
 | Parameter | Value | Location |
 |-----------|-------|----------|
 | `MAX_PACKET_SIZE` | 32 | `common/packet.h:6` |
-| Vendor ID | 0x1234 | `device/device.h:147` |
-| Product ID | 0x5678 | `device/device.h:148` |
+| Vendor ID | 0x1234 | `device/device.h:149` |
+| Product ID | 0x5678 | `device/device.h:150` |
 | USB Version | 2.0 (0x0200) | `device/device.h:16` |
+| CPU RAM Size | 64 bytes | `cpu/cpu.h:10` |
 
 ### String Customization
 
 Edit the string descriptor macros in `device/device.h`:
 
 ```cpp
-// Manufacturer string (UTF-16LE, 11 characters)
-#define STRING_VEN_B_LANG_ID "Test Vendor"
+// Manufacturer string (UTF-16LE, 4 characters)
+#define STRING_VEN_B_LANG_ID "DEAD"
 
-// Product string (UTF-16LE, 12 characters)
-#define STRING_PROD_B_LANG_ID "Test Product"
+// Product string (UTF-16LE, 4 characters)
+#define STRING_PROD_B_LANG_ID "BEEF"
 ```
 
 ---
@@ -405,31 +513,35 @@ Edit the string descriptor macros in `device/device.h`:
 - **No CRC validation**: Token and data CRC are not verified
 - **No suspend/resume**: `USB_SUSPENDED` state not implemented
 - **No interrupt/bulk/isochronous transfers**: Control only
-- **No stall handling**: STALL response not implemented
-- **No address filtering**: Accepts packets for any address
+- **No stall handling**: STALL response not fully implemented
+- **No address filtering**: Accepts packets for any address (partially implemented)
 
 ---
 
 ## Future Work
 
 ### High Priority
-- [x] Implement `SET_ADDRESS` request handler
 - [ ] Implement `SET_CONFIGURATION` request handler
-- [x] Add `GET_DESCRIPTOR` for STRING type
-- [ ] Add `GET_DESCRIPTOR` for CONFIGURATION type
-- [x] Implement state transitions
+- [ ] Add `GET_DESCRIPTOR` for CONFIGURATION type with endpoint descriptors
+- [ ] Implement explicit ACK handshake responses (replace implicit TLM_OK)
+- [ ] Error status handling in CPU firmware (`cpu.cpp:66`, `cpu.cpp:121`)
 
 ### Medium Priority
+- [ ] Return STALL for unsupported requests in STATUS stage (`device.cpp:10`)
+- [ ] Add endpoint descriptors (`device.cpp:211`)
+- [ ] Set transaction data length properly (`device.cpp:298`)
+- [ ] Implement port control functionality (`controller.cpp:101`)
 - [ ] Add NAK/STALL responses
 - [ ] Implement data toggle synchronization with controller
 - [ ] Add CRC validation
-- [ ] Implement address filtering
-- [ ] Complete host controller module
+- [ ] Complete address filtering
 
 ### Low Priority
+- [ ] HUB functionality (`controller.h:51`)
+- [ ] HUB IN endpoint for reporting device attachment events (`controller.h:52`)
+- [ ] HOST periodic polling to learn new or removed devices (`controller.h:54`)
 - [ ] Endpoint descriptors (EP0 IN/OUT)
 - [ ] Bulk endpoint support
-- [ ] DMA support
 - [ ] Interrupt endpoint handling
 - [ ] Suspend/resume support
 - [ ] Testbench with enumeration sequence
@@ -442,17 +554,20 @@ Edit the string descriptor macros in `device/device.h`:
 usb2.0/
 ├── CMakeLists.txt           # Build configuration
 ├── README.md                # This file
-├── main.cpp                 # Entry point
+├── main.cpp                 # Entry point, module instantiation
 ├── common/
-│   ├── common.h             # Device states, control states
-│   └── packet.h             # USB packet structures, PIDs
+│   ├── common.h             # Device states, control states, transmission states
+│   ├── packet.h             # USB packet structures, PIDs, setup request
+│   └── log.h                # Logging macros (DEBUG, INFO, ERROR)
 ├── controller/
-│   └── controller.h         # Host controller (placeholder)
+│   ├── controller.h         # Host controller class, registers, states
+│   └── controller.cpp       # Controller implementation, DMA, USB transactions
 ├── cpu/
-│   └── cpu.h                # CPU module (placeholder)
+│   ├── cpu.h                # CPU class with RAM, sockets
+│   └── cpu.cpp              # CPU firmware, DMA handler
 └── device/
     ├── device.h             # Device class, descriptors
-    ├── device.cpp           # Device implementation
+    ├── device.cpp           # Device implementation, state machines
     ├── device_tb.h          # Device testbench header
     └── device_tb.cpp        # Device testbench implementation
 ```
