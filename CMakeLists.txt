@@ -12,6 +12,7 @@ set(INC
         common/
         device/
         controller/
+        cpu/
 )
 
 set(SRC
@@ -22,6 +23,10 @@ set(SRC
         device/device_tb.cpp
 
         # USB Controller
+        controller/controller.cpp
+
+        # CPU
+        cpu/cpu.cpp
 )
 
 add_executable(usb ${SRC})

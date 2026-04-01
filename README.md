@@ -202,7 +202,7 @@ The device supports standard control transfers via Endpoint 0.
 | Request | bRequest | Description | Status |
 |---------|----------|-------------|--------|
 | `GET_DESCRIPTOR` | 0x06 | Retrieve descriptor | Implemented |
-| `SET_ADDRESS` | 0x05 | Set device address | TODO |
+| `SET_ADDRESS` | 0x05 | Set device address | Implemented |
 | `SET_CONFIGURATION` | 0x09 | Set configuration | TODO |
 
 ### Supported Descriptor Types
@@ -415,7 +415,7 @@ Edit the string descriptor macros in `device/device.h`:
 ### High Priority
 - [x] Implement `SET_ADDRESS` request handler
 - [ ] Implement `SET_CONFIGURATION` request handler
-- [ ] Add `GET_DESCRIPTOR` for STRING type
+- [x] Add `GET_DESCRIPTOR` for STRING type
 - [ ] Add `GET_DESCRIPTOR` for CONFIGURATION type
 - [x] Implement state transitions
 
@@ -428,7 +428,7 @@ Edit the string descriptor macros in `device/device.h`:
 
 ### Low Priority
 - [ ] Endpoint descriptors (EP0 IN/OUT)
-- [ ] Bulk/Interrupt/ISO endpoint support
+- [ ] Bulk endpoint support
 - [ ] DMA support
 - [ ] Interrupt endpoint handling
 - [ ] Suspend/resume support
@@ -463,13 +463,14 @@ usb2.0/
 
 ```bash
 # Configure
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
+mkdir build && cd build
+cmake -DSYSTEMC_HOME=$SYSTEMC_HOME ..
 
 # Build
-cmake --build build
+make -j$(nproc)
 
 # Run
-./build/usb
+./usb
 ```
 
 ---
