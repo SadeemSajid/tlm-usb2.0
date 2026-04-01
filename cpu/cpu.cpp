@@ -43,8 +43,8 @@ void CPU::firmware_thread()
 	set_address(0, 4, 0);
 
 	/* GET_DESCRIPTOR */
-	// std::cout << "\n--- GET_DESCRIPTOR (4) ---\n" << std::endl;
-	// get_descriptor(4, 0);
+	std::cout << "\n--- GET_DESCRIPTOR (4) ---\n" << std::endl;
+	get_descriptor(4, 0);
 }
 
 void CPU::poll_status(uint32_t &status)
@@ -87,13 +87,21 @@ void CPU::get_descriptor(uint8_t addr, uint8_t endp)
 
 	// ack
 
-	/* STATUS stage */
 	// poll status
 	while (status != HC_STS_TR_COMP) {
 		poll_status(status);
 		LOG_DEBUG("[CPU] polled status 0x" << std::hex << status);
 		wait(1, sc_core::SC_MS);
 	}
+
+	// print data
+	LOG_INFO("\n\n[CPU] Raw Data: ");
+	for (size_t i = 0; i < 16; i++) {
+		printf("%02X ", ram[i]);
+	}
+	std::cout << "\n" << std::endl;
+
+	/* STATUS stage */
 	status = HC_STS_STOP;
 
 	// out token
@@ -147,8 +155,8 @@ void CPU::send_token(uint8_t type, uint8_t addr, uint8_t endp, bool data_toggle,
 	tlm::tlm_generic_payload trans;
 	sc_core::sc_time delay;
 
-	// we make the PID, DMA expects only the payload
-	uint32_t ram_offset = sizeof(packet_pid_t);
+	// DMA expects only the payload, wraps it in PID
+	uint32_t ram_offset = 0;
 
 	// write address & endp
 	uint32_t addr_ep = (static_cast<uint32_t>(endp) << 7) | (addr & 0x7F);
@@ -165,15 +173,10 @@ void CPU::send_token(uint8_t type, uint8_t addr, uint8_t endp, bool data_toggle,
 
 	// prepare DATA buffer for RAM and write to data register
 
-	packet_pid_t *pid = (packet_pid_t *)ram;
-	pid->type = data_toggle == 0 ? PID_DATA_DATA0 : PID_DATA_DATA1;
-	pid->check = (uint8_t)(~pid->type & 0x0F);
-
 	if (type == 0) {
 
 		LOG_DEBUG("[CPU] Sending SETUP");
-		setup_request_t *s_req =
-		    (setup_request_t *)(ram + sizeof(packet_pid_t));
+		setup_request_t *s_req = (setup_request_t *)ram;
 		s_req->bmRequestType =
 		    (req == REQ_GET_DESCRIPTOR) ? 0x80 : 0x00;
 		s_req->bRequest = req;
@@ -196,7 +199,8 @@ void CPU::send_token(uint8_t type, uint8_t addr, uint8_t endp, bool data_toggle,
 
 	socket->b_transport(trans, delay);
 
-	LOG_DEBUG("[CPU] Sent data at: 0x" << std::hex << (uint64_t)ram_offset);
+	LOG_DEBUG("[CPU] Sent data at address: 0x" << std::hex
+						   << (uint64_t)ram_offset);
 
 	// write token to initiate
 	uint32_t token = 0;
