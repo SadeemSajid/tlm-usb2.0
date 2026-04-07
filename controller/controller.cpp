@@ -8,8 +8,8 @@
 #include <systemc>
 #include <tlm_core/tlm_2/tlm_generic_payload/tlm_gp.h>
 
-void Controller::b_transport(tlm::tlm_generic_payload &trans,
-			     sc_core::sc_time &delay)
+void USB_Controller::b_transport(tlm::tlm_generic_payload &trans,
+				 sc_core::sc_time &delay)
 {
 	LOG_INFO("[Controller] CPU invoked b_transport");
 
@@ -25,7 +25,7 @@ void Controller::b_transport(tlm::tlm_generic_payload &trans,
 	}
 }
 
-void Controller::process_thread()
+void USB_Controller::process_thread()
 {
 
 	while (true) {
@@ -52,7 +52,7 @@ void Controller::process_thread()
 	}
 }
 
-void Controller::register_write(uint8_t offset, uint32_t data)
+void USB_Controller::register_write(uint8_t offset, uint32_t data)
 {
 	// Sanity checks
 	if (offset % 0x4 != 0) {
@@ -142,7 +142,7 @@ void Controller::register_write(uint8_t offset, uint32_t data)
 	}
 }
 
-uint32_t Controller::register_read(uint8_t offset)
+uint32_t USB_Controller::register_read(uint8_t offset)
 {
 	// sanity checks
 	if (offset % 0x4 != 0) {
@@ -177,7 +177,7 @@ uint32_t Controller::register_read(uint8_t offset)
 }
 
 /* Device Interface */
-void Controller::execute_usb_transaction(uint8_t token_type)
+void USB_Controller::execute_usb_transaction(uint8_t token_type)
 {
 
 	/* Token */
@@ -234,8 +234,8 @@ void Controller::execute_usb_transaction(uint8_t token_type)
 }
 
 /* Low Level Helpers */
-tlm::tlm_response_status Controller::send_token(uint8_t type, uint8_t addr,
-						uint8_t endp)
+tlm::tlm_response_status USB_Controller::send_token(uint8_t type, uint8_t addr,
+						    uint8_t endp)
 {
 	tlm::tlm_generic_payload trans;
 	sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
@@ -257,7 +257,7 @@ tlm::tlm_response_status Controller::send_token(uint8_t type, uint8_t addr,
 }
 
 tlm::tlm_response_status
-Controller::send_data_packet(uint8_t pid_type, uint8_t *src, uint32_t len)
+USB_Controller::send_data_packet(uint8_t pid_type, uint8_t *src, uint32_t len)
 {
 	tlm::tlm_generic_payload trans;
 	sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
@@ -284,8 +284,9 @@ Controller::send_data_packet(uint8_t pid_type, uint8_t *src, uint32_t len)
 
 	return trans.get_response_status();
 }
-tlm::tlm_response_status
-Controller::receive_data_packet(uint8_t pid_type, uint8_t *dest, uint32_t &len)
+tlm::tlm_response_status USB_Controller::receive_data_packet(uint8_t pid_type,
+							     uint8_t *dest,
+							     uint32_t &len)
 {
 	tlm::tlm_generic_payload trans;
 	sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
@@ -323,7 +324,7 @@ Controller::receive_data_packet(uint8_t pid_type, uint8_t *dest, uint32_t &len)
 	return tlm::TLM_OK_RESPONSE;
 }
 
-void Controller::dma_read(uint32_t addr, uint8_t *dest, uint32_t len)
+void USB_Controller::dma_read(uint32_t addr, uint8_t *dest, uint32_t len)
 {
 	tlm::tlm_generic_payload trans;
 	sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
@@ -337,7 +338,7 @@ void Controller::dma_read(uint32_t addr, uint8_t *dest, uint32_t len)
 	dma_sock->b_transport(trans, delay);
 }
 
-void Controller::dma_write(uint32_t addr, uint8_t *src, uint32_t len)
+void USB_Controller::dma_write(uint32_t addr, uint8_t *src, uint32_t len)
 {
 	if (len == 0)
 		return;

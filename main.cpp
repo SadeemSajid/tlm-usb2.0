@@ -12,7 +12,7 @@ int sc_main(int argc, char *argv[])
 	/* USB Device Testing */
 	// usb_dev.target.bind(usb_dev_tb.socket);
 
-	Controller controller("controller");
+	USB_Controller controller("controller");
 
 	CPU cpu("cpu");
 

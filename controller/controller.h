@@ -30,7 +30,7 @@ enum HC_STATUS {
 
 enum HC_STATE { HC_STOPPED, HC_RUNNING, HC_RESET, HC_OPERATION, HC_ERROR };
 
-class Controller : public sc_core::sc_module
+class USB_Controller : public sc_core::sc_module
 {
 	/* Device Control */
 	bool data_toggle;
@@ -55,12 +55,12 @@ class Controller : public sc_core::sc_module
 
       public:
 	/* TLM Sockets */
-	tlm_utils::simple_initiator_socket<Controller> dev_out_sock;
-	tlm_utils::simple_target_socket<Controller> cpu_in_sock;
+	tlm_utils::simple_initiator_socket<USB_Controller> dev_out_sock;
+	tlm_utils::simple_target_socket<USB_Controller> cpu_in_sock;
 
-	tlm_utils::simple_initiator_socket<Controller> dma_sock;
+	tlm_utils::simple_initiator_socket<USB_Controller> dma_sock;
 
-	SC_CTOR(Controller)
+	SC_CTOR(USB_Controller)
 	    : dev_out_sock("dev_out_sock"), cpu_in_sock("cpu_in_sock"),
 	      dma_sock("dma_sock")
 	{
@@ -75,7 +75,7 @@ class Controller : public sc_core::sc_module
 
 		// register transport
 		cpu_in_sock.register_b_transport(this,
-						 &Controller::b_transport);
+						 &USB_Controller::b_transport);
 		SC_THREAD(process_thread);
 	}
 

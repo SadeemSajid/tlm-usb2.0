@@ -16,8 +16,6 @@ set(INC
 )
 
 set(SRC
-        main.cpp
-
         # USB Device
         device/device.cpp
         device/device_tb.cpp
@@ -29,6 +27,22 @@ set(SRC
         cpu/cpu.cpp
 )
 
-add_executable(usb ${SRC})
+add_executable(usb main.cpp ${SRC})
 target_include_directories(usb PUBLIC ${INC} ${SYSTEMC_INC_DIR})
 target_link_libraries(usb SystemC::systemc)
+
+# SystemC Lib
+add_library(USB2
+	SHARED
+	${SRC}
+)
+
+target_include_directories(USB2
+	PUBLIC
+	${INC}
+)
+
+target_link_libraries(USB2
+	PUBLIC
+	SystemC::systemc
+)
